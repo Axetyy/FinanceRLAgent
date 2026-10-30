@@ -71,17 +71,20 @@ class TradingEnv(gym.Env):
     
     def _obs(self):
         lo = self.t - self.window + 1
-        held = np.abs(self.w) > 1e-3
         px = self.prices[self.t]
+        held = np.abs(self.w) > 1e-3
+        missing = held & np.isnan(self.entry)
+        self.entry[missing] = px[missing]
+        self.age[~held] = 0
         unreal = np.zeros(self.n)
-        unreal[held] = np.sign(self.w[held]) *(px[held]/ self.entry[held]-1.0)
+        unreal[held] = np.sign(self.w[held]) * (px[held] / self.entry[held] - 1.0)
         port = np.concatenate([
             self.w,
-            np.clip(unreal,-1,1),
-            np.clip(self.age / C.AGE_CAP,0,1),
-            [self.dd,1.0 - np.abs(self.w).sum()],
+            np.clip(unreal, -1, 1),
+            np.clip(self.age / C.AGE_CAP, 0, 1),
+            [self.dd, 1.0 - np.abs(self.w).sum()],
         ]).astype(np.float32)
-        obs = {"market":self.feats[lo:self.t+1].copy(),"portfolio":port}
+        obs = {"market": self.feats[lo:self.t + 1].copy(), "portfolio": port}
         if self.news is not None:
             last = self.news_last[self.t]                               # (n,)
             emb = np.zeros((self.n, self.news_dim), np.float32)
@@ -165,9 +168,7 @@ class TradingEnv(gym.Env):
         dd_increase = max(0.0,new_dd - self.dd)
         self.dd = new_dd
         
-        reward = self.scale * (np.log1p(max(step_ret, -0.99))
-                               - self.dd_pen * dd_increase
-                               - self.churn * turnover)
+        reward = self.scale * (np.log1p(max(step_ret, -0.99)) - self.dd_pen * dd_increase - self.churn * turnover)
         
         terminated = self.t >= self.T -2
         truncated = (self.episode_len is not None and (self.t - self.t0) >=self.episode_len)
